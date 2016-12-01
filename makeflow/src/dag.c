@@ -55,6 +55,10 @@ struct dag *dag_create()
 	d->should_read_archive = 0;
 	d->should_write_to_archive = 0;
 
+	d->bytes_hashed = 0;
+	d->bytes_copied = 0;
+	d->bytes_preserved = 0;
+
 	/* Add GC_*_LIST to variables table to ensure it is in
 	 * global DAG scope. /
 	hash_table_insert(d->variables,"GC_PRESERVE_LIST"   , dag_variable_create(NULL, ""));

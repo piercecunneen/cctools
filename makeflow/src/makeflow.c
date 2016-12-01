@@ -2031,7 +2031,10 @@ if (enforcer && wrapper_umbrella) {
 	makeflow_run(d);
 	time_completed = timestamp_get();
 	runtime = time_completed - runtime;
-
+	printf("hashed %" PRId64 " bytes\n", d->bytes_hashed);
+	printf("preserved %" PRId64 " bytes\n", d->bytes_preserved);
+	printf("copied %" PRId64  " bytes\n", d->bytes_copied);
+	printf("time = %d\n", runtime);
 	if(local_queue)
 		batch_queue_delete(local_queue);
 	batch_queue_delete(remote_queue);

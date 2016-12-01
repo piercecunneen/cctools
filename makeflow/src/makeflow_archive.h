@@ -13,7 +13,9 @@ See the file COPYING for details.
 #include "sha1.h"
 #include "list.h"
 
+
 #define MAKEFLOW_ARCHIVE_DEFAULT_DIRECTORY "/tmp/makeflow.archive."
+
 
 /* Preserves the current node within the archiving directory
    The source makeflow file, ancestor node archive_ids, and the output files are archived */

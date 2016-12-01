@@ -26,14 +26,17 @@ See the file COPYING for details.
 #include <errno.h>
 
 /* generates the checksum of a file's contents and stores it within the dag_file struct */
-static void generate_file_archive_id(struct dag_file *f) {
+static void generate_file_archive_id(struct dag_file *f, struct dag *d) {
   unsigned char digest[SHA1_DIGEST_LENGTH];
+  struct stat buff;
   sha1_file(f->filename, digest);
+  stat(f->filename, &buff);
+  d->bytes_hashed = d->bytes_hashed + buff.st_size;
   f->archive_id = xxstrdup(sha1_string(digest));
 }
 
 /* Given a node, generate the archive_id from the input files and command */
-static void generate_node_archive_id(struct dag_node *n, char *command, struct list*inputs) {
+static void generate_node_archive_id(struct dag *d, struct dag_node *n, char *command, struct list*inputs) {
   if (n->archive_id != NULL) {
     /* node archive id already exists */
     return;
@@ -46,14 +49,15 @@ static void generate_node_archive_id(struct dag_node *n, char *command, struct l
   list_first_item(inputs);
   while((f = list_next_item(inputs))) {
     if (f->archive_id == NULL) {
-      generate_file_archive_id(f);
+      generate_file_archive_id(f, d);
     }
     archive_id = string_combine(archive_id, f->archive_id);
   }
   sha1_buffer(command, strlen(command), digest);
-
+  d->bytes_hashed = d->bytes_hashed + sizeof(command);
   archive_id = string_combine(archive_id, sha1_string(digest));
   sha1_buffer(archive_id, strlen(archive_id), digest);
+  d->bytes_hashed = d->bytes_hashed + sizeof(archive_id);
 
   n->archive_id = xxstrdup(sha1_string(digest));
 
@@ -63,6 +67,7 @@ static void generate_node_archive_id(struct dag_node *n, char *command, struct l
 /* writes the run_info files that is stored within each archived node */
 static void write_job_run_info(struct dag *d, struct dag_node *n, char *archive_path, struct batch_job_info *info, char *command) {
   char *run_info_path = NULL;
+  struct stat buff;
   FILE *fp;
   run_info_path = string_combine_multi(run_info_path, archive_path, "/run_info", 0);
   fp = fopen(run_info_path, "w");
@@ -80,6 +85,8 @@ static void write_job_run_info(struct dag *d, struct dag_node *n, char *archive_
   }
   free(run_info_path);
   fclose(fp);
+  stat(run_info_path, &buff);
+  d->bytes_preserved = d->bytes_preserved + buff.st_size;
 }
 
 /* writes the file symlink that links to the archived job that created it */
@@ -87,9 +94,10 @@ static void write_file_checksum(struct dag *d, struct dag_file *f, char *job_arc
   char *file_archive_path;
   int success, symlink_failure;
   char archiving_prefix[3] = "";
+  struct stat buff;
 
   if (f->archive_id == NULL) {
-    generate_file_archive_id(f);
+    generate_file_archive_id(f, d);
   }
 
   strncpy(archiving_prefix, f->archive_id, 2);
@@ -104,6 +112,8 @@ static void write_file_checksum(struct dag *d, struct dag_file *f, char *job_arc
   if (symlink_failure && errno != EEXIST) {
     fatal("Could not create symlink %s pointing to %s\n", file_archive_path, job_archive_path);
   }
+  lstat(file_archive_path, &buff);
+  d->bytes_preserved = d->bytes_preserved + buff.st_size;
   free(file_archive_path);
 }
 
@@ -113,6 +123,7 @@ static void write_descendant_link(struct dag *d, struct dag_node *current_node, 
   char current_node_archiving_prefix[3] = "";
   char ancestor_node_archiving_prefix[3] = "";
   int symlink_failure;
+  struct stat buff;
 
   strncpy(current_node_archiving_prefix, current_node->archive_id, 2);
   strncpy(ancestor_node_archiving_prefix, ancestor_node->archive_id, 2);
@@ -124,6 +135,8 @@ static void write_descendant_link(struct dag *d, struct dag_node *current_node, 
   if (symlink_failure && errno != EEXIST) {
     fatal("Could not create symlink %s pointing to %s\n", ancestor_link_path, descendant_job_path);
   }
+  lstat(ancestor_link_path, &buff);
+  d->bytes_preserved = d->bytes_preserved + buff.st_size;
   free(descendant_job_path);
   free(ancestor_link_path);
 
@@ -135,7 +148,7 @@ static void write_ancestor_links(struct dag *d, struct dag_node *current_node, s
   char current_node_archiving_prefix[3] = "";
   char ancestor_node_archiving_prefix[3] = "";
   int symlink_failure;
-
+  struct stat buff;
   strncpy(current_node_archiving_prefix, current_node->archive_id, 2);
   strncpy(ancestor_node_archiving_prefix, ancestor_node->archive_id, 2);
 
@@ -146,6 +159,8 @@ static void write_ancestor_links(struct dag *d, struct dag_node *current_node, s
   if (symlink_failure && errno != EEXIST) {
     fatal("Could not create symlink %s pointing to %s\n", current_node_descendant_path, ancestor_job_path);
   }
+  lstat(current_node_descendant_path, &buff);
+  d->bytes_preserved = d->bytes_preserved + buff.st_size;
   free(ancestor_job_path);
   free(current_node_descendant_path);
 
@@ -163,9 +178,10 @@ void makeflow_archive_populate(struct dag *d, struct dag_node *n, char *command,
   struct dag_node *ancestor;
   struct dag_file *f;
   int success, symlink_failure;
+  struct stat buff;
 
   /* in --archive-write mode, we haven't yet generated a node's archive_id, so need to generate it here */
-  generate_node_archive_id(n, command, inputs);
+  generate_node_archive_id(d, n, command, inputs);
   strncpy(archiving_prefix, n->archive_id, 2);
 
   archive_directory_path = string_combine_multi(NULL, d->archive_directory, "/jobs/", archiving_prefix, "/", n->archive_id + 2, 0);
@@ -208,6 +224,8 @@ void makeflow_archive_populate(struct dag *d, struct dag_node *n, char *command,
     } else {
       f->archive_path = xxstrdup(output_file_path);
     }
+    stat(output_file_path, &buff);
+    d->bytes_preserved = d-> bytes_preserved + buff.st_size;
     free(output_file_path);
   }
   /* only preserve Makeflow workflow instructions if node is a root node */
@@ -217,6 +235,8 @@ void makeflow_archive_populate(struct dag *d, struct dag_node *n, char *command,
     if (!success) {
       fatal("Could not archive source makeflow file %s\n", source_makeflow_file_path);
     }
+    stat(source_makeflow_file_path, &buff);
+    d->bytes_preserved = d-> bytes_preserved + buff.st_size;
     free(source_makeflow_file_path);
   }
   /* Here we write both the ancestor link for the current node and the descendant link for the ancestor node.
@@ -242,6 +262,8 @@ void makeflow_archive_populate(struct dag *d, struct dag_node *n, char *command,
       if (!success) {
         fatal("Could not archive input file %s\n", source_makeflow_file_path);
       }
+      stat(input_file, &buff);
+      d->bytes_preserved = d->bytes_preserved + buff.st_size;
     } else {
       if (f->archive_path != NULL) {
         ancestor_output_file_path = xxstrdup(f->archive_path);
@@ -259,6 +281,8 @@ void makeflow_archive_populate(struct dag *d, struct dag_node *n, char *command,
       if (symlink_failure && errno != EEXIST) {
         fatal("Could not create symlink %s pointing to %s\n", input_file, ancestor_output_file_path);
       }
+      lstat(input_file, &buff);
+      d->bytes_preserved = d->bytes_preserved + buff.st_size;
       free(ancestor_output_file_path);
     }
     free(input_file);
@@ -279,6 +303,7 @@ int makeflow_archive_copy_preserved_files(struct dag *d, struct dag_node *n, str
   int success;
   char *output_file_path;
   char archiving_prefix[3] = "";
+  struct stat buff;
 
   strncpy(archiving_prefix, n->archive_id, 2);
 
@@ -290,6 +315,8 @@ int makeflow_archive_copy_preserved_files(struct dag *d, struct dag_node *n, str
     if (!success) {
       fatal("Could not reproduce output file %s\n", output_file_path);
     }
+    stat(filename, &buff);
+    d->bytes_copied = d->bytes_copied + buff.st_size;
     free(filename);
     free(output_file_path);
   }
@@ -304,7 +331,7 @@ int makeflow_archive_is_preserved(struct dag *d, struct dag_node *n, char *comma
   int file_exists = -1;
   char archiving_prefix[3] = "";
 
-  generate_node_archive_id(n, command, inputs);
+  generate_node_archive_id(d, n, command, inputs);
   strncpy(archiving_prefix, n->archive_id, 2);
 
   list_first_item(outputs);
