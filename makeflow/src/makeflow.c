@@ -998,7 +998,11 @@ static void makeflow_run( struct dag *d )
 	while(!makeflow_abort_flag) {
 		did_find_archived_job = 0;
 		makeflow_dispatch_ready_jobs(d);
-
+		/*
+ 		Due to the fact that archived jobs are never "run", no local or remote jobs are added
+ 		to the remote or local job table if all ready jobs were found within the archive.
+ 		Thus makeflow_dispatch_ready_jobs must run at least once more if an archived job was found.
+ 		*/
 		if(dag_local_jobs_running(d)==0 && dag_remote_jobs_running(d)==0 && did_find_archived_job == 0 )
 			break;
 
@@ -1152,9 +1156,9 @@ static void show_help_run(const char *cmd)
 	printf(" %-30s Indicate preferred master connection. Choose one of by_ip or by_hostname. (default is by_ip)\n", "--work-queue-preferred-connection");
 	printf(" %-30s Use JSON format rather than Make-style format for the input file.\n", "--json");
         printf(" %-30s Wrap execution of all rules in a singularity container.\n","--singularity=<image>");
-	printf(" %-30s Archive results of makeflow in specified directory			   (default directory is %s)\n", "--archive=<dir>", ARCHIVING_DEFAULT_DIRECTORY);
-	printf(" %-30s Read/Use archived results of makeflow in specified directory, will not write to archive			   (default directory is %s)\n", "--archive-read=<dir>", ARCHIVING_DEFAULT_DIRECTORY);
-	printf(" %-30s Write archived results of makeflow in specified directory, will not read/use archived data			 (default directory is %s)\n", "--archive-write=<dir>", ARCHIVING_DEFAULT_DIRECTORY);
+	printf(" %-30s Archive results of makeflow in specified directory			   (default directory is %s)\n", "--archive=<dir>", MAKEFLOW_ARCHIVE_DEFAULT_DIRECTORY);
+	printf(" %-30s Read/Use archived results of makeflow in specified directory, will not write to archive			   (default directory is %s)\n", "--archive-read=<dir>", MAKEFLOW_ARCHIVE_DEFAULT_DIRECTORY);
+	printf(" %-30s Write archived results of makeflow in specified directory, will not read/use archived data			 (default directory is %s)\n", "--archive-write=<dir>", MAKEFLOW_ARCHIVE_DEFAULT_DIRECTORY);
 
 	printf("\n*Monitor Options:\n\n");
 	printf(" %-30s Enable the resource monitor, and write the monitor logs to <dir>.\n", "--monitor=<dir>");
@@ -1639,8 +1643,8 @@ int main(int argc, char *argv[])
 				} else {
 					char *uid = xxmalloc(10);
 					sprintf(uid, "%d",  getuid());
-					archive_directory = xxmalloc(sizeof(ARCHIVING_DEFAULT_DIRECTORY) + 20 * sizeof(char));
-					sprintf(archive_directory, "%s%s", ARCHIVING_DEFAULT_DIRECTORY, uid);
+					archive_directory = xxmalloc(sizeof(MAKEFLOW_ARCHIVE_DEFAULT_DIRECTORY) + 20 * sizeof(char));
+					sprintf(archive_directory, "%s%s", MAKEFLOW_ARCHIVE_DEFAULT_DIRECTORY, uid);
 					free(uid);
 				}
 				break;
@@ -1655,8 +1659,8 @@ int main(int argc, char *argv[])
 				} else {
 					char *uid = xxmalloc(10);
 					sprintf(uid, "%d",  getuid());
-					archive_directory = xxmalloc(sizeof(ARCHIVING_DEFAULT_DIRECTORY) + 20 * sizeof(char));
-					sprintf(archive_directory, "%s%s", ARCHIVING_DEFAULT_DIRECTORY, uid);
+					archive_directory = xxmalloc(sizeof(MAKEFLOW_ARCHIVE_DEFAULT_DIRECTORY) + 20 * sizeof(char));
+					sprintf(archive_directory, "%s%s", MAKEFLOW_ARCHIVE_DEFAULT_DIRECTORY, uid);
 					free(uid);
 				}
 				break;
@@ -1671,8 +1675,8 @@ int main(int argc, char *argv[])
 				} else {
 					char *uid = xxmalloc(10);
 					sprintf(uid, "%d",  getuid());
-					archive_directory = xxmalloc(sizeof(ARCHIVING_DEFAULT_DIRECTORY) + 20 * sizeof(char));
-					sprintf(archive_directory, "%s%s", ARCHIVING_DEFAULT_DIRECTORY, uid);
+					archive_directory = xxmalloc(sizeof(MAKEFLOW_ARCHIVE_DEFAULT_DIRECTORY) + 20 * sizeof(char));
+					sprintf(archive_directory, "%s%s", MAKEFLOW_ARCHIVE_DEFAULT_DIRECTORY, uid);
 					free(uid);
 				}
 				break;
